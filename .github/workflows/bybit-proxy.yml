@@ -1,4 +1,4 @@
-name: Bybit API Test (curl)
+name: Bybit API Proxy
 
 on:
   issues:
@@ -6,44 +6,69 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  proxy-request:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Test Bybit API
-      id: test
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install axios
+      run: npm install axios
+        
+    - name: Process Bybit API request
+      id: process-request
       run: |
-        echo "Testing Bybit API with curl..."
+        echo "Starting Bybit API test..."
         
-        # Тестируем публичный endpoint
-        response=$(curl -s "https://api.bybit.com/v5/public/time")
-        status_code=$?
+        node -e "
+        const axios = require('axios');
         
-        echo "Curl exit code: $status_code"
-        echo "Response: $response"
+        console.log('Testing Bybit API...');
         
-        if [ $status_code -eq 0 ]; then
-          echo "::set-output name=success::true"
-          echo "::set-output name=response::$response"
-          echo "::set-output name=comment::## Bybit API Test Success!\n\n**Response:** \`\`\`json\n$response\n\`\`\`"
-        else
-          echo "::set-output name=success::false"
-          echo "::set-output name=response::Error: curl failed with code $status_code"
-          echo "::set-output name=comment::## Bybit API Test Failed!\n\n**Error:** curl failed with code $status_code"
-        fi
+        const testUrl = 'https://api.bybit.com/v5/public/time';
         
-    - name: Show outputs
+        axios.get(testUrl, {
+          timeout: 30000,
+          headers: {
+            'User-Agent': 'GitHub-Actions-Proxy/1.0'
+          }
+        })
+        .then(response => {
+          console.log('Success! Status:', response.status);
+          console.log('Data:', JSON.stringify(response.data, null, 2));
+          
+          const comment = '## Bybit API Test Success!\n\n**Status:** ' + response.status + '\n**Data:** ```json\n' + JSON.stringify(response.data, null, 2) + '\n```\n\n**Test URL:** ' + testUrl + '\n**Timestamp:** ' + new Date().toISOString();
+          
+          console.log('::set-output name=comment::' + comment);
+          console.log('::set-output name=success::true');
+        })
+        .catch(error => {
+          console.error('Error:', error.message);
+          
+          const errorComment = '## Bybit API Test Failed\n\n**Error:** ' + error.message + '\n**Test URL:** ' + testUrl + '\n**Timestamp:** ' + new Date().toISOString();
+          
+          console.log('::set-output name=comment::' + errorComment);
+          console.log('::set-output name=success::false');
+        });
+        "
+        
+    - name: Show output
       run: |
-        echo "Success: ${{ steps.test.outputs.success }}"
-        echo "Response: ${{ steps.test.outputs.response }}"
-        echo "Comment: ${{ steps.test.outputs.comment }}"
+        echo "Comment output: ${{ steps.process-request.outputs.comment }}"
+        echo "Success output: ${{ steps.process-request.outputs.success }}"
         
     - name: Comment on issue
       if: github.event_name == 'issues'
       uses: actions/github-script@v7
       with:
         script: |
-          const comment = '${{ steps.test.outputs.comment }}';
+          const comment = '${{ steps.process-request.outputs.comment }}';
           const issue_number = context.issue.number;
           
           console.log('Adding comment to issue:', issue_number);
@@ -57,3 +82,10 @@ jobs:
           });
           
           console.log('Comment added successfully!');
+        
+    - name: Show final result
+      run: |
+        echo "=== FINAL RESULT ==="
+        echo "Success: ${{ steps.process-request.outputs.success }}"
+        echo "Comment preview: ${{ steps.process-request.outputs.comment != '' && 'Comment exists' || 'No comment' }}"
+        echo "==================="
