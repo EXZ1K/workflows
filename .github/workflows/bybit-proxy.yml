@@ -20,12 +20,14 @@ jobs:
         status_code=$?
         
         echo "Curl exit code: $status_code"
-        echo "Response: $response"
+        echo "Response received (length: ${#response})"
         
         if [ $status_code -eq 0 ]; then
           echo "::set-output name=success::true"
-          echo "::set-output name=response::$response"
-          echo "::set-output name=comment::## Bybit API Test Success!\n\n**Response:** \`\`\`json\n$response\n\`\`\`"
+          # Экранируем ответ для безопасного вывода
+          safe_response=$(echo "$response" | tr -d '\n' | sed 's/"/\\"/g')
+          echo "::set-output name=response::$safe_response"
+          echo "::set-output name=comment::## Bybit API Test Success!\n\n**Response:** \`\`\`\n$safe_response\n\`\`\`"
         else
           echo "::set-output name=success::false"
           echo "::set-output name=response::Error: curl failed with code $status_code"
@@ -35,8 +37,7 @@ jobs:
     - name: Show outputs
       run: |
         echo "Success: ${{ steps.test.outputs.success }}"
-        echo "Response: ${{ steps.test.outputs.response }}"
-        echo "Comment: ${{ steps.test.outputs.comment }}"
+        echo "Response length: ${{ steps.test.outputs.response != '' && 'Response exists' || 'No response' }}"
         
     - name: Comment on issue
       if: github.event_name == 'issues'
@@ -47,7 +48,7 @@ jobs:
           const issue_number = context.issue.number;
           
           console.log('Adding comment to issue:', issue_number);
-          console.log('Comment content:', comment);
+          console.log('Comment length:', comment.length);
           
           await github.rest.issues.createComment({
             issue_number: issue_number,
