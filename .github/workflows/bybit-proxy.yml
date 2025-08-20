@@ -27,14 +27,9 @@ jobs:
         node -e "
         const axios = require('axios');
         
-        // Получаем данные из Issue
-        const issueBody = '${{ github.event.issue.body }}';
-        console.log('Issue body:', issueBody);
+        console.log('Testing Bybit API...');
         
-        // Простой тест - делаем запрос к публичному endpoint
         const testUrl = 'https://api.bybit.com/v5/public/time';
-        
-        console.log('Testing Bybit API:', testUrl);
         
         axios.get(testUrl, {
           timeout: 30000,
@@ -43,36 +38,20 @@ jobs:
           }
         })
         .then(response => {
-          console.log('✅ Success! Status:', response.status);
+          console.log('Success! Status:', response.status);
           console.log('Data:', JSON.stringify(response.data, null, 2));
           
-          const comment = \`## ✅ Bybit API Test Success!
+          const comment = '## Bybit API Test Success!\n\n**Status:** ' + response.status + '\n**Data:** ```json\n' + JSON.stringify(response.data, null, 2) + '\n```\n\n**Test URL:** ' + testUrl + '\n**Timestamp:** ' + new Date().toISOString();
           
-          **Status:** \${response.status}
-          **Data:** \`\`\`json
-          \${JSON.stringify(response.data, null, 2)}
-          \`\`\`
-          
-          **Test URL:** \${testUrl}
-          **Timestamp:** \${new Date().toISOString()}
-          \`;
-          
-          console.log('::set-output name=comment::' + comment.replace(/\n/g, '%0A'));
+          console.log('::set-output name=comment::' + comment);
           console.log('::set-output name=success::true');
         })
         .catch(error => {
-          console.error('❌ Error:', error.message);
+          console.error('Error:', error.message);
           
-          const errorComment = \`## ❌ Bybit API Test Failed
+          const errorComment = '## Bybit API Test Failed\n\n**Error:** ' + error.message + '\n**Test URL:** ' + testUrl + '\n**Timestamp:** ' + new Date().toISOString();
           
-          **Error:** \${error.message}
-          **Test URL:** \${testUrl}
-          **Timestamp:** \${new Date().toISOString()}
-          
-          **Details:** \${error.response ? \`Status: \${error.response.status}, Data: \${JSON.stringify(error.response.data)}\` : 'No response data'}
-          \`;
-          
-          console.log('::set-output name=comment::' + errorComment.replace(/\n/g, '%0A'));
+          console.log('::set-output name=comment::' + errorComment);
           console.log('::set-output name=success::false');
         });
         "
