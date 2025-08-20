@@ -11,9 +11,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_USERNAME/bybit-api-proxy.git"
+    "url": "git+https://github.com/EXZ1K/bybit-api-proxy.git"
   },
   "keywords": ["bybit", "api", "proxy", "github-actions"],
-  "author": "Your Name",
+  "author": "EXZ1K",
   "license": "MIT"
 }
