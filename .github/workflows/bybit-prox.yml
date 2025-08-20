@@ -1,0 +1,150 @@
+name: Bybit API Proxy
+
+on:
+  issues:
+    types: [opened, edited]
+    paths:
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: 'Bybit API endpoint'
+        required: true
+        default: '/v5/public/time'
+      method:
+        description: 'HTTP method'
+        required: true
+        default: 'GET'
+      params:
+        description: 'Request parameters (JSON)'
+        required: false
+        default: '{}'
+      headers:
+        description: 'Request headers (JSON)'
+        required: false
+        default: '{}'
+
+jobs:
+  proxy-request:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        
+    - name: Install dependencies
+      run: npm install axios
+        
+    - name: Process Bybit API request
+      id: process-request
+      run: |
+        node -e "
+        const axios = require('axios');
+        
+        const endpoint = '${{ github.event.inputs.endpoint || github.event.issue.body.match(/URL: (.+)/)?.[1] || '/v5/public/time' }}';
+        const method = '${{ github.event.inputs.method || 'GET' }}';
+        const params = JSON.parse('${{ github.event.inputs.params || '{}' }}');
+        const headers = JSON.parse('${{ github.event.inputs.headers || '{}' }}');
+        
+        const baseUrl = 'https://api.bybit.com';
+        const fullUrl = baseUrl + endpoint;
+        
+        console.log('Making request to:', fullUrl);
+        console.log('Method:', method);
+        console.log('Params:', JSON.stringify(params));
+        console.log('Headers:', JSON.stringify(headers));
+        
+        const config = {
+          method: method.toLowerCase(),
+          url: fullUrl,
+          params: method === 'GET' ? params : undefined,
+          data: method !== 'GET' ? params : undefined,
+          headers: {
+            'User-Agent': 'GitHub-Actions-Proxy/1.0',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            ...headers
+          },
+          timeout: 30000
+        };
+        
+        axios(config)
+          .then(response => {
+            console.log('Response status:', response.status);
+            console.log('Response data:', JSON.stringify(response.data, null, 2));
+            
+            // Создаем комментарий с результатом
+            const comment = \`## ✅ Bybit API Response
+            
+            **Status:** \${response.status}
+            **Data:** \`\`\`json
+            \${JSON.stringify(response.data, null, 2)}
+            \`\`\`
+            
+            **Request Details:**
+            - **URL:** \${fullUrl}
+            - **Method:** \${method}
+            - **Params:** \${JSON.stringify(params)}
+            - **Headers:** \${JSON.stringify(headers)}
+            \`;
+            
+            console.log('::set-output name=comment::' + comment.replace(/\n/g, '%0A'));
+            console.log('::set-output name=success::true');
+          })
+          .catch(error => {
+            console.error('Error:', error.message);
+            if (error.response) {
+              console.error('Response status:', error.response.status);
+              console.error('Response data:', error.response.data);
+            }
+            
+            const errorComment = \`## ❌ Bybit API Error
+            
+            **Error:** \${error.message}
+            **Status:** \${error.response?.status || 'N/A'}
+            **Data:** \`\`\`json
+            \${JSON.stringify(error.response?.data || {}, null, 2)}
+            \`\`\`
+            
+            **Request Details:**
+            - **URL:** \${fullUrl}
+            - **Method:** \${method}
+            - **Params:** \${JSON.stringify(params)}
+            - **Headers:** \${JSON.stringify(headers)}
+            \`;
+            
+            console.log('::set-output name=comment::' + errorComment.replace(/\n/g, '%0A'));
+            console.log('::set-output name=success::false');
+          });
+        "
+        
+    - name: Comment on issue
+      if: github.event_name == 'issues'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const comment = '${{ steps.process-request.outputs.comment }}';
+          const issue_number = context.issue.number;
+          
+          github.rest.issues.createComment({
+            issue_number: issue_number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+          
+    - name: Create result file
+      run: |
+        echo '${{ steps.process-request.outputs.comment }}' > result.md
+        echo 'Success: ${{ steps.process-request.outputs.success }}' >> result.md
+        
+    - name: Upload result artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: bybit-api-result
+        path: result.md
