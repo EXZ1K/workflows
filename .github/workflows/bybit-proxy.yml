@@ -1,4 +1,4 @@
-name: Bybit API Test (curl)
+name: Bybit API Proxy
 
 on:
   issues:
@@ -6,45 +6,155 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  proxy-request:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Test Bybit API
-      id: test
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install axios
+      run: npm install axios
+        
+    - name: Process Bybit API request
+      id: process-request
       run: |
-        echo "Testing Bybit API with curl..."
+        echo "Starting Bybit API test with authentication..."
         
-        # Тестируем публичный endpoint
-        response=$(curl -s "https://api.bybit.com/v5/public/time")
-        status_code=$?
+        node -e "
+        const axios = require('axios');
+        const crypto = require('crypto');
         
-        echo "Curl exit code: $status_code"
-        echo "Response received (length: ${#response})"
+        // API ключи Bybit
+        const API_KEY = 'bFhwyzFXvIKSkAerm9';
+        const SECRET_KEY = 'oub7k6lL20tCkyLoxvbho2YXIAIeUayCVYkP';
         
-        if [ $status_code -eq 0 ]; then
-          echo "::set-output name=success::true"
-          # Экранируем ответ для безопасного вывода
-          safe_response=$(echo "$response" | tr -d '\n' | sed 's/"/\\"/g')
-          echo "::set-output name=response::$safe_response"
-          echo "::set-output name=comment::## Bybit API Test Success!\n\n**Response:** \`\`\`\n$safe_response\n\`\`\`"
-        else
-          echo "::set-output name=success::false"
-          echo "::set-output name=response::Error: curl failed with code $status_code"
-          echo "::set-output name=comment::## Bybit API Test Failed!\n\n**Error:** curl failed with code $status_code"
-        fi
+        // Создаем подпись для Bybit API
+        function createSignature(params, secretKey) {
+          const timestamp = Date.now().toString();
+          const recvWindow = '5000';
+          
+          // Сортируем параметры по алфавиту
+          const sortedParams = Object.keys(params)
+            .sort()
+            .reduce((result, key) => {
+              result[key] = params[key];
+              return result;
+            }, {});
+          
+          // Добавляем timestamp и recvWindow
+          sortedParams.timestamp = timestamp;
+          sortedParams.recvWindow = recvWindow;
+          
+          // Создаем строку для подписи
+          const queryString = Object.keys(sortedParams)
+            .map(key => \`\${key}=\${sortedParams[key]}\`)
+            .join('&');
+          
+          // Создаем HMAC SHA256 подпись
+          const signature = crypto.createHmac('sha256', secretKey)
+            .update(queryString)
+            .digest('hex');
+          
+          return {
+            signature: signature,
+            timestamp: timestamp,
+            recvWindow: recvWindow,
+            queryString: queryString
+          };
+        }
         
-    - name: Show outputs
+        // Тестируем публичный endpoint
+        console.log('Testing public Bybit endpoint...');
+        axios.get('https://api.bybit.com/v5/public/time', {
+          timeout: 30000,
+          headers: {
+            'User-Agent': 'GitHub-Actions-Proxy/1.0'
+          }
+        })
+        .then(response => {
+          console.log('✅ Public endpoint success! Status:', response.status);
+          console.log('Public data:', JSON.stringify(response.data, null, 2));
+          
+          // Теперь тестируем аутентифицированный endpoint
+          const testParams = { limit: '1' };
+          const signatureData = createSignature(testParams, SECRET_KEY);
+          
+          const headers = {
+            'X-BAPI-API-KEY': API_KEY,
+            'X-BAPI-SIGN': signatureData.signature,
+            'X-BAPI-TIMESTAMP': signatureData.timestamp,
+            'X-BAPI-RECV-WINDOW': signatureData.recvWindow,
+            'User-Agent': 'GitHub-Actions-Proxy/1.0'
+          };
+          
+          console.log('Testing authenticated Bybit endpoint...');
+          return axios.get('https://api.bybit.com/v5/asset/coin/query-info', {
+            params: testParams,
+            headers: headers,
+            timeout: 30000
+          });
+        })
+        .then(response => {
+          console.log('✅ Authenticated endpoint success! Status:', response.status);
+          console.log('Auth data:', JSON.stringify(response.data, null, 2));
+          
+          const comment = \`## ✅ Bybit API Test Success!
+
+**Public Endpoint:** \`/v5/public/time\`
+**Status:** \${response.status}
+**Data:** \`\`\`json
+\${JSON.stringify(response.data, null, 2)}
+\`\`\`
+
+**API Key:** \${API_KEY.substring(0, 8)}...
+**Timestamp:** \${new Date().toISOString()}
+**GitHub Actions:** ✅ Working\`;
+          
+          console.log('::set-output name=comment::' + comment);
+          console.log('::set-output name=success::true');
+        })
+        .catch(error => {
+          console.error('❌ Error:', error.message);
+          
+          if (error.response) {
+            console.error('Response status:', error.response.status);
+            console.error('Response data:', error.response.data);
+          }
+          
+          const errorComment = \`## ❌ Bybit API Test Failed
+
+**Error:** \${error.message}
+**Status:** \${error.response?.status || 'N/A'}
+**Data:** \`\`\`json
+\${JSON.stringify(error.response?.data || {}, null, 2)}
+\`\`\`
+
+**API Key:** \${API_KEY.substring(0, 8)}...
+**Timestamp:** \${new Date().toISOString()}
+**GitHub Actions:** ❌ Failed\`;
+          
+          console.log('::set-output name=comment::' + errorComment);
+          console.log('::set-output name=success::false');
+        });
+        "
+        
+    - name: Show output
       run: |
-        echo "Success: ${{ steps.test.outputs.success }}"
-        echo "Response length: ${{ steps.test.outputs.response != '' && 'Response exists' || 'No response' }}"
+        echo "Comment output: ${{ steps.process-request.outputs.comment }}"
+        echo "Success output: ${{ steps.process-request.outputs.success }}"
         
     - name: Comment on issue
       if: github.event_name == 'issues'
       uses: actions/github-script@v7
       with:
         script: |
-          const comment = '${{ steps.test.outputs.comment }}';
+          const comment = '${{ steps.process-request.outputs.comment }}';
           const issue_number = context.issue.number;
           
           console.log('Adding comment to issue:', issue_number);
@@ -58,3 +168,10 @@ jobs:
           });
           
           console.log('Comment added successfully!');
+        
+    - name: Show final result
+      run: |
+        echo "=== FINAL RESULT ==="
+        echo "Success: ${{ steps.process-request.outputs.success }}"
+        echo "Comment exists: ${{ steps.process-request.outputs.comment != '' }}"
+        echo "==================="
