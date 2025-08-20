@@ -87,5 +87,5 @@ jobs:
       run: |
         echo "=== FINAL RESULT ==="
         echo "Success: ${{ steps.process-request.outputs.success }}"
-        echo "Comment preview: ${{ steps.process-request.outputs.comment != '' && 'Comment exists' || 'No comment' }}"
+        echo "Comment exists: ${{ steps.process-request.outputs.comment != '' }}"
         echo "==================="
