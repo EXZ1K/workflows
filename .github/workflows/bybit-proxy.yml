@@ -24,53 +24,14 @@ jobs:
     - name: Process Bybit API request
       id: process-request
       run: |
-        echo "Starting Bybit API test with authentication..."
+        echo "Starting Bybit API test..."
         
         node -e "
         const axios = require('axios');
-        const crypto = require('crypto');
         
-        // API ключи Bybit
-        const API_KEY = 'bFhwyzFXvIKSkAerm9';
-        const SECRET_KEY = 'oub7k6lL20tCkyLoxvbho2YXIAIeUayCVYkP';
-        
-        // Создаем подпись для Bybit API
-        function createSignature(params, secretKey) {
-          const timestamp = Date.now().toString();
-          const recvWindow = '5000';
-          
-          // Сортируем параметры по алфавиту
-          const sortedParams = Object.keys(params)
-            .sort()
-            .reduce((result, key) => {
-              result[key] = params[key];
-              return result;
-            }, {});
-          
-          // Добавляем timestamp и recvWindow
-          sortedParams.timestamp = timestamp;
-          sortedParams.recvWindow = recvWindow;
-          
-          // Создаем строку для подписи
-          const queryString = Object.keys(sortedParams)
-            .map(key => \`\${key}=\${sortedParams[key]}\`)
-            .join('&');
-          
-          // Создаем HMAC SHA256 подпись
-          const signature = crypto.createHmac('sha256', secretKey)
-            .update(queryString)
-            .digest('hex');
-          
-          return {
-            signature: signature,
-            timestamp: timestamp,
-            recvWindow: recvWindow,
-            queryString: queryString
-          };
-        }
+        console.log('Testing Bybit API with axios...');
         
         // Тестируем публичный endpoint
-        console.log('Testing public Bybit endpoint...');
         axios.get('https://api.bybit.com/v5/public/time', {
           timeout: 30000,
           headers: {
@@ -78,41 +39,17 @@ jobs:
           }
         })
         .then(response => {
-          console.log('✅ Public endpoint success! Status:', response.status);
-          console.log('Public data:', JSON.stringify(response.data, null, 2));
-          
-          // Теперь тестируем аутентифицированный endpoint
-          const testParams = { limit: '1' };
-          const signatureData = createSignature(testParams, SECRET_KEY);
-          
-          const headers = {
-            'X-BAPI-API-KEY': API_KEY,
-            'X-BAPI-SIGN': signatureData.signature,
-            'X-BAPI-TIMESTAMP': signatureData.timestamp,
-            'X-BAPI-RECV-WINDOW': signatureData.recvWindow,
-            'User-Agent': 'GitHub-Actions-Proxy/1.0'
-          };
-          
-          console.log('Testing authenticated Bybit endpoint...');
-          return axios.get('https://api.bybit.com/v5/asset/coin/query-info', {
-            params: testParams,
-            headers: headers,
-            timeout: 30000
-          });
-        })
-        .then(response => {
-          console.log('✅ Authenticated endpoint success! Status:', response.status);
-          console.log('Auth data:', JSON.stringify(response.data, null, 2));
+          console.log('✅ Success! Status:', response.status);
+          console.log('Data:', JSON.stringify(response.data, null, 2));
           
           const comment = \`## ✅ Bybit API Test Success!
 
-**Public Endpoint:** \`/v5/public/time\`
+**Endpoint:** \`/v5/public/time\`
 **Status:** \${response.status}
 **Data:** \`\`\`json
 \${JSON.stringify(response.data, null, 2)}
 \`\`\`
 
-**API Key:** \${API_KEY.substring(0, 8)}...
 **Timestamp:** \${new Date().toISOString()}
 **GitHub Actions:** ✅ Working\`;
           
@@ -135,7 +72,6 @@ jobs:
 \${JSON.stringify(error.response?.data || {}, null, 2)}
 \`\`\`
 
-**API Key:** \${API_KEY.substring(0, 8)}...
 **Timestamp:** \${new Date().toISOString()}
 **GitHub Actions:** ❌ Failed\`;
           
